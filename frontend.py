@@ -12,6 +12,10 @@ if uploaded_files:
     db = build_index(docs)
     agent = build_graph(db)
 
+    pdf_names = sorted(list({d.metadata.get("source","unknown") for d in docs}))
+    selected_pdf = st.selectbox("filter by document (optional)", ["All"] + pdf_names)
+
+
     if "thread_id" not in st.session_state:
         st.session_state['thread_id'] = str(uuid4())
 
@@ -19,15 +23,12 @@ if uploaded_files:
 
     if st.button("Get Answer") and query:
         result = agent.invoke(
-            {'query':query},
+            {'query':query, "filter_doc": None if selected_pdf == "All" else selected_pdf},
             config={'configurable':{"thread_id": st.session_state["thread_id"]}})
         
         #show retrieved docs (if any)
         if 'retrieved_docs' in result and result['retrieved_docs']:
-            # st.subheader("Retrived Passages")
-            # for d in result['retrieved_docs']:
-            #     st.write(d.page_content[:300] + "....")
-            
+
             # show final answer
             st.subheader("Answer")
             st.write(result["answer"])

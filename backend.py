@@ -21,6 +21,7 @@ class GraphState(TypedDict, total=False):
     db: Any
     retrieved_docs: List[Document]
     answer: str
+    filter_doc: str
 
 @traceable(name='load_pdfs')
 def load_pdfs(uploaded_files, save_dir = "./uploaded_pdfs"):
@@ -47,14 +48,30 @@ def build_index(docs, persist_dir = "./chroma_store"):
 def make_retriever_node(db):
     def retriever_node(state: GraphState) -> GraphState:
         query = state["query"]
-        docs = db.similarity_search(query, k=4)
+        filter_doc = state["filter_doc"]
+        if filter_doc:
+            docs = db.similarity_search(query, k=3, filter ={"source": filter_doc})
+        else:
+            docs = db.similarity_search(query, k=4)
         return {"retrieved_docs": docs}
     return retriever_node
 
 @traceable(name='answer_node')
 def answer_node(state: GraphState) -> GraphState:
-    context = "\n".join([d.page_content for d in state['retrieved_docs']])
-    prompt = f"Answer based only on: \n{context}\n\nQuestion: {state['query']}"
+    context = "\n\n".join([
+        f"Document: {d.metadata.get('source', 'unknown')}, Page {d.metadata.get('page', '?')}\n{d.page_content}"
+        for d in state['retrieved_docs']
+    ])
+    prompt = f"""
+    You are a helpful research assistant.
+    Answer the question using only the context below.
+    If the user asks about a specific paper, prioritize content from that document.
+
+    Context:
+    {context}
+
+    Question: {state['query']}
+    """
     response = model.invoke(prompt)
     return {"answer": response.content}
 
